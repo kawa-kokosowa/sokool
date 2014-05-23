@@ -1,6 +1,6 @@
-    ###
+    ###; This is a demo level.
 #####.#
-#   @ #
+#   @ #; Showing off comments.
 #%#%#%#
 #&#$# #
 # % & #

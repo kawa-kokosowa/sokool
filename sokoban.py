@@ -25,7 +25,7 @@ import os
 # CONFIG CONSTANTS ############################################################
 
 
-BACKGROUND_CHARACTER = '/'
+BACKGROUND_CHARACTER = '.'
 BACKGROUND_COLOR = curses.COLOR_WHITE
 FOREGROUND_COLOR = curses.COLOR_BLACK
 PLAYER_CHARACTER = '@'
@@ -149,15 +149,17 @@ def astar(start, goal):
     return None
 
 
-def make_panel(width, height, position, title):
+def make_panel(width, height, position, title=None):
     """I need to document this better..."""
 
     win = curses.newwin(height, width, *position)
     win.erase()
-    win.box()
 
-    title = ' ' + title + ' '
-    win.addstr(0, 2, title, curses.A_REVERSE)
+    if title:
+        win.box()
+        title = ' ' + title + ' '
+        win.addstr(0, 2, title, curses.A_REVERSE)
+
     panel = curses.panel.new_panel(win)
 
     return win, panel
@@ -663,9 +665,31 @@ class Room(object):
 
         # for window/curses control
         #self.win = curses.newwin(self.y, self.x, 0, 0)
-        height, width = screen.getmaxyx()
-        self.win = curses.newwin(height, width - STATUS_PANEL_WIDTH, 0, 0)
-        self.win.bkgd(BACKGROUND_CHARACTER, curses.color_pair(1))
+        self.height, self.width = screen.getmaxyx()
+        self.width -= STATUS_PANEL_WIDTH
+        self.win = curses.newwin(self.height, self.width, 0, 0)
+
+        # need a get_background command...
+        self.win.bkgd(' ', curses.color_pair(1))
+        self.background_lines = []
+
+        if os.path.exists('backgrounds/%s.txt' % self.room):
+
+            with open('backgrounds/%s.txt' % self.room) as f:
+                background_lines = f.readlines()
+
+            width = len(background_lines[0])
+            height = len(background_lines)
+            self.background_x_repeat = int(math.ceil(float(self.width)
+                                                     / float(width)))
+            self.background_y_repeat = int(math.ceil(float(self.height)
+                                           / float(height)))
+
+            for i in xrange(self.background_y_repeat):
+
+                for line in background_lines:
+                    line = line * self.background_x_repeat
+                    self.background_lines.append(line)
 
         # good place for items that move about, rendered last (highest z index)
         self.overlay_cells = {}
@@ -781,12 +805,26 @@ class Room(object):
                     self.goals.append((x, y))
 
                 elif col == ';':
+                    # new panel here?
                     comment = ''.join(row[x:])
-                    self.win.addstr(y, x, comment)
+                    self.win.addstr(y, x, comment, curses.A_REVERSE
+                                                   | curses.A_BOLD)
 
                     break
 
                 self.coordinates.append((x, y))
+
+        # background lines
+        for y, line in enumerate(self.background_lines):
+            line = line.strip().replace('\n', '')
+
+            for x, char in enumerate(line):
+
+                try:
+                    self.win.addch(y, x, char)
+                except:
+
+                    break
 
         # now draw the overlay/entitites
         for coordinate, entity in self.overlay_cells.items():
@@ -823,7 +861,7 @@ for combo in all_color_combos:
     max_color_pair += 1
     curses.init_pair(max_color_pair, *combo)
 
-screen.bkgd(BACKGROUND_CHARACTER, curses.color_pair(1))
+screen.bkgd(' ', curses.color_pair(1))
 screen.addstr(2, 2, 'PRESS M TO START', curses.color_pair(2))
 
 room = Room()
