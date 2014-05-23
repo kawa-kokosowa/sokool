@@ -777,6 +777,9 @@ class Room(object):
         """Should be called compile... maybe a part of init?"""
 
         # background lines
+        # could draw this randomly for scatter pattern
+        background_cells = set()
+
         for y, line in enumerate(self.background_lines):
             line = line.strip().replace('\n', '')
 
