@@ -17,6 +17,7 @@ import itertools
 import textwrap
 import random
 import glob
+import time
 import math
 import sys
 import os
@@ -572,13 +573,14 @@ class StatusPanel(object):
         self.title = room.title
 
         # screen
-        screen_height, screen_width = screen.getmaxyx()
-        position = (0, screen_width - STATUS_PANEL_WIDTH)
+        self.max_screen_y, self.max_screen_x = screen.getmaxyx()
+        position = (0, self.max_screen_x - STATUS_PANEL_WIDTH)
         width = STATUS_PANEL_WIDTH
         self.width = width
 
         # draw the status panel...
-        self.window, self.curses_panel = make_panel(width, screen_height,
+        self.window, self.curses_panel = make_panel(self.width,
+                                                    self.max_screen_y,
                                                     position, self.title)
 
         # draw the story for this room if possible
@@ -611,8 +613,6 @@ class StatusPanel(object):
             for y, line in enumerate(paragraphs):
                 story.addstr(y + 2, 2, line)
 
-        self.screen_height = screen_height
-        self.screen_width = screen_width
         self.story_position = 0
         self.story_pad = story
         self.update()
@@ -626,8 +626,8 @@ class StatusPanel(object):
 
         # refresh the screen
         curses.panel.update_panels()
-        y_position = self.screen_height - 20
-        x_position = self.screen_width - self.width
+        y_position = self.max_screen_y - 20
+        x_position = self.max_screen_x - self.width
         self.story_pad.refresh(self.story_position, 0, y_position, x_position,
                                y_position + y_position,
                                x_position + (self.width - 1))
@@ -776,6 +776,22 @@ class Room(object):
     def draw(self):
         """Should be called compile... maybe a part of init?"""
 
+        # background lines
+        for y, line in enumerate(self.background_lines):
+            line = line.strip().replace('\n', '')
+
+            for x, char in enumerate(line):
+                time.sleep(0.001)
+
+                try:
+                    self.win.addch(y, x, char)
+                except:
+
+                    break
+
+                self.win.touchwin()
+                self.win.refresh()
+
         # collect data from "static map" and transform into entities
         for y, row in enumerate(self.static_map):
 
@@ -813,18 +829,6 @@ class Room(object):
                     break
 
                 self.coordinates.append((x, y))
-
-        # background lines
-        for y, line in enumerate(self.background_lines):
-            line = line.strip().replace('\n', '')
-
-            for x, char in enumerate(line):
-
-                try:
-                    self.win.addch(y, x, char)
-                except:
-
-                    break
 
         # now draw the overlay/entitites
         for coordinate, entity in self.overlay_cells.items():
