@@ -832,6 +832,8 @@ class Room(object):
             self.win.addch(y, x, entity.character,
                            curses.color_pair(entity.color_pair))
 
+        self.win.touchwin()
+        self.win.refresh()
 
 # runtime/start UI
 screen = curses.initscr()
