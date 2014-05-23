@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Sokool: Sokoban Kool Edition
 Lillian Lynn Mahoney
 
@@ -5,12 +6,20 @@ RPG elements!
 
 Experience is a formula involving the # of moves to complete a level...
 
+Record # of moves, level/character
+
+Work on color next, all entities should have a color...
+
 """
 
-import curses
+import curses, curses.panel
+import itertools
+import textwrap
+import random
 import glob
 import math
 import sys
+import os
 
 
 # CONFIG CONSTANTS ############################################################
@@ -21,6 +30,7 @@ BACKGROUND_COLOR = curses.COLOR_WHITE
 FOREGROUND_COLOR = curses.COLOR_BLACK
 PLAYER_CHARACTER = '@'
 
+STATUS_PANEL_WIDTH = 35
 
 # A* ALGORITHM/PATH GENERATION ################################################
 
@@ -139,52 +149,38 @@ def astar(start, goal):
     return None
 
 
-class Menu(object):
+def make_panel(width, height, position, title):
+    """I need to document this better..."""
 
-    def __init__(self):
-        self.rows = rows
-        self.items = {}
+    win = curses.newwin(height, width, *position)
+    win.erase()
+    win.box()
 
-    def item(self, item_title, callback=None):
-        self.items[item_title] = callback
+    title = ' ' + title + ' '
+    win.addstr(0, 2, title, curses.A_REVERSE)
+    panel = curses.panel.new_panel(win)
 
-    def init(self):
-        height = len(self.items)
-        width = len(max(self.items.keys()))
-        window =  curses.newwin(height, width)
-        window.box()
+    return win, panel
 
-        callback_index = {}
 
-        for i, row in enumerate(self.items.keys()):
-            y = i + 1
-            window.addstr(y, 2, row)
+def menu(rows):
+    """Mostly a placeholder. Should use make_panel..."""
+    stats =  curses.newwin(6, 18)
+    stats.box()
+    callbacks = rows.values()
+    rows = rows.keys()
 
-            callback = self.items[row]
+    while True:
 
-            if callback:
-                callback_index[y] = self.items[row]
+        for i, row in enumerate(rows):
+            stats.addstr(i + 1, 2, row)
 
-        close_pos_y = y + 2
-        window.addstr(close_pos_y, 2, 'CLOSE')
+        stats.addstr(2, 2, 'BLOCKS: %s/%s' % (self.blocks, self.max_blocks))
+        stats.addstr(3, 2, 'MOVES: ' + str(self.moves))
+        stats.addstr(4, 2, 'XP: ' + str(self.xp))
         stats.touchwin()
         stats.refresh()
-
-        # build the index of options
-        cursor_positions = callback_index.keys()
-        cursor_index = cursor_positions[0]
-        window.putch(cursor_index, 0, '>')
-
-        # time to navigate the menu with up and down
-        while True:
-            key = screen.getch()
-            window.putch(cursor_index, 0, ' ')
-
-            if key == curses.KEY_UP:
-                cursor_index -= 1
-
-            elif key == curses.KEY_DOWN:
-                cursor_index += 1
+        self.in_menu = True
 
 
 # Game Objects ################################################################
@@ -198,10 +194,10 @@ class Player(object):
 
         self.name = 'player'
         self.character = PLAYER_CHARACTER
-        self.moves = 0
         self.in_menu = False
         self.solid = True
         self.underfoot = None
+        self.color_pair = 1
 
         # stats
         self.hp = 3
@@ -210,6 +206,7 @@ class Player(object):
         self.blocks = 0
         self.max_blocks = 2
 
+        self.steps = 0
         self.xp = 0
 
     def __str__(self):
@@ -258,12 +255,9 @@ class Player(object):
     def add_moves(self, x):
         """Subtract by adding negative."""
 
-        self.moves += x
-        room.win.addstr(room.y - 1, 1, str(self.moves) + ' MOVES')
-
-        # should target specific range
-        room.win.refresh()
-        screen.refresh()
+        self.steps += 1
+        status.update()
+        #screen.refresh()
 
     def update(self):
         key = screen.getch()
@@ -334,19 +328,22 @@ class Player(object):
 
             return self.set_block('down')
 
-        elif self.in_menu is False and key == ord('m'):
-           stats =  curses.newwin(8, 18)
-           stats.box()
-           stats.addstr(1, 2, 'HP: %s/%s' % (self.hp, self.max_hp))
-           stats.addstr(2, 2, 'BLOCKS: %s/%s' % (self.blocks, self.max_blocks))
-           stats.addstr(3, 2, 'MOVES: ' + str(self.moves))
-           stats.addstr(4, 2, 'XP: ' + str(self.xp))
-           stats.addstr(6, 2, '(c)LOSE (q)UIT')
-           stats.touchwin()
-           stats.refresh()
-           self.in_menu = True
+        elif self.in_menu is False and key == curses.KEY_PPAGE:
+            menu = Menu(['derp', 'bad', 'fad', 'ogay'])
+            self.in_menu = True
 
-           return False
+            return False
+
+            stats =  curses.newwin(6, 18)
+            stats.box()
+            stats.addstr(1, 2, 'HP: %s/%s' % (self.hp, self.max_hp))
+            stats.addstr(2, 2, 'BLOCKS: %s/%s' % (self.blocks, self.max_blocks))
+            stats.addstr(4, 2, 'XP: ' + str(self.xp))
+            stats.touchwin()
+            stats.refresh()
+            self.in_menu = True
+
+            return False
 
         else:
 
@@ -415,6 +412,7 @@ class Enemy(object):
         self.character = '&'
         self.solid = True
         self.underfoot = None
+        self.color_pair = 2
 
     def __str__(self):
 
@@ -494,6 +492,7 @@ class PlaceBlock(object):
         self.name = 'place block'
         self.solid = True
         self.underfoot = None
+        self.color_pair = 3
 
         self.x = None
         self.y = None
@@ -508,6 +507,7 @@ class PushBlock(object):
         self.name = 'push block'
         self.solid = True
         self.underfoot = None
+        self.color_pair = 4
 
         self.x = None
         self.y = None
@@ -522,6 +522,7 @@ class Goal(object):
         self.name = 'goal'
         self.solid = False
         self.underfoot = None
+        self.color_pair = 5
 
         self.x = None
         self.y = None
@@ -534,6 +535,7 @@ class Wall(object):
         self.name = 'wall'
         self.solid = True
         self.underfoot = None
+        self.color_pair = 6
 
         self.x = None
         self.y = None
@@ -546,9 +548,88 @@ class EmptySpace(object):
         self.name = 'empty'
         self.solid = False
         self.underfoot = None
+        self.color_pair = 7
 
         self.x = None
         self.y = None
+
+
+class StatusPanel(object):
+
+    def __init__(self):
+        """Sits to the right of the game screen. Displays
+        general level and player data.
+
+        Right-aligned. IS a curses panel.
+
+        Args:
+          room (int): room # to fetch meta and dialog for.
+
+        """
+
+        self.title = room.title
+
+        # screen
+        screen_height, screen_width = screen.getmaxyx()
+        position = (0, screen_width - STATUS_PANEL_WIDTH)
+        width = STATUS_PANEL_WIDTH
+        self.width = width
+
+        # draw the status panel...
+        self.window, self.curses_panel = make_panel(width, screen_height,
+                                                    position, self.title)
+
+        # draw the story for this room if possible
+        if os.path.exists('story/%s.txt' % room.room):
+            story_position = 0
+            story = curses.newpad(20, width)
+            story.box()
+            story.addstr(0, 2, ' EVENT LOG ', curses.A_REVERSE)
+
+            with open('story/%s.txt' % room.room) as f:
+                story_contents = f.readlines()
+
+            paragraphs = []
+
+            for i, paragraph in enumerate(story_contents):
+
+                if paragraph == '\n':
+                    paragraphs.append(' ')
+
+                    continue
+
+                paragraph = textwrap.wrap(paragraph,
+                                          STATUS_PANEL_WIDTH - 4)
+
+                if i == 0:
+                    paragraph[0] = paragraph[0].upper()
+
+                paragraphs.extend(paragraph)
+
+            for y, line in enumerate(paragraphs):
+                story.addstr(y + 2, 2, line)
+
+        self.screen_height = screen_height
+        self.screen_width = screen_width
+        self.story_position = 0
+        self.story_pad = story
+        self.update()
+
+    def update(self):
+        self.window.addstr(2, 2, 'STEPS: %s' % player.steps)
+        self.window.addstr(3, 2, 'HP: %s/%s' % (player.hp, player.max_hp))
+        self.window.addstr(4, 2, 'BLOCKS: %s/%s' % (player.blocks,
+                                                    player.max_blocks))
+        self.window.addstr(5, 2, 'XP: %s' % player.xp)
+
+        # refresh the screen
+        curses.panel.update_panels()
+        y_position = self.screen_height - 20
+        x_position = self.screen_width - self.width
+        self.story_pad.refresh(self.story_position, 0, y_position, x_position,
+                               y_position + y_position,
+                               x_position + (self.width - 1))
+        screen.refresh()
 
 
 class Room(object):
@@ -566,6 +647,7 @@ class Room(object):
         # generate model from file
         self.room = room
         self.filename = glob.glob('rooms/%s - *.txt' % self.room)[0]
+        self.title = self.filename.rsplit('.', 1)[0].replace('rooms/', '')
 
         with open(self.filename) as f:
             file_contents = f.read()
@@ -580,7 +662,10 @@ class Room(object):
         self.goals = []  # so we may quickly check goal status later...
 
         # for window/curses control
-        self.win = curses.newwin(self.y, self.x, 0, 0)
+        #self.win = curses.newwin(self.y, self.x, 0, 0)
+        height, width = screen.getmaxyx()
+        self.win = curses.newwin(height, width - STATUS_PANEL_WIDTH, 0, 0)
+        self.win.bkgd(BACKGROUND_CHARACTER, curses.color_pair(1))
 
         # good place for items that move about, rendered last (highest z index)
         self.overlay_cells = {}
@@ -588,7 +673,6 @@ class Room(object):
     def next(self):
         self.__init__(room=self.room)
         self.draw()
-        self.win.addstr(room.y - 1, room.x - 7, '(m)ENU')
         room.win.touchwin()
         player = room.player
 
@@ -629,7 +713,8 @@ class Room(object):
 
         self.overlay_cells[(x, y)] = entity
 
-        self.win.addch(y, x, entity.character)
+        self.win.addch(y, x, entity.character,
+                       curses.color_pair(entity.color_pair))
         self.win.refresh()
 
     def __getitem__(self, key):
@@ -642,7 +727,8 @@ class Room(object):
         self.overlay_cells[key] = empty_space
 
         x, y = key
-        self.win.addch(y, x, empty_space.character)
+        self.win.addch(y, x, empty_space.character,
+                       curses.color_pair(empty_space.color_pair))
         self.win.refresh()
 
     def move(self, move_from, move_to):
@@ -696,11 +782,7 @@ class Room(object):
 
                 elif col == ';':
                     comment = ''.join(row[x:])
-
-                    try:
-                        self.win.addstr(y, x, comment)
-                    except:
-                        raise Exception(([x, y], [self.x, self.y], len(comment)))
+                    self.win.addstr(y, x, comment)
 
                     break
 
@@ -709,11 +791,8 @@ class Room(object):
         # now draw the overlay/entitites
         for coordinate, entity in self.overlay_cells.items():
             x, y = coordinate
-
-            try:
-                self.win.addch(y, x, entity.character)
-            except:
-                raise Exception(entity.character)
+            self.win.addch(y, x, entity.character,
+                           curses.color_pair(entity.color_pair))
 
 
 # runtime/start UI
@@ -724,17 +803,35 @@ curses.start_color()
 curses.use_default_colors()
 curses.cbreak()
 screen.keypad(1)
-curses.init_pair(1, BACKGROUND_COLOR, FOREGROUND_COLOR)
-screen.bkgd(BACKGROUND_CHARACTER, curses.color_pair(1))
-curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)
 
-screen.addstr(2, 2, 'PRESS M TO START')
+# make the color combos here...
+colors = [
+           curses.COLOR_BLACK,
+           curses.COLOR_RED,
+           curses.COLOR_GREEN,
+           curses.COLOR_YELLOW,
+           curses.COLOR_BLUE,
+           curses.COLOR_MAGENTA,
+           curses.COLOR_CYAN,
+           curses.COLOR_WHITE,
+         ]
+random.shuffle(colors)
+all_color_combos = itertools.combinations(colors, 2)
+max_color_pair = 0
+
+for combo in all_color_combos:
+    max_color_pair += 1
+    curses.init_pair(max_color_pair, *combo)
+
+screen.bkgd(BACKGROUND_CHARACTER, curses.color_pair(1))
+screen.addstr(2, 2, 'PRESS M TO START', curses.color_pair(2))
 
 room = Room()
 room.draw()
-room.win.addstr(room.y - 1, room.x - 7, '(m)ENU')
 room.win.touchwin()
+
 player = room.player
+status = StatusPanel()
 
 while 1:
 
@@ -745,7 +842,6 @@ while 1:
         if room.goals_complete():
             room = Room(room.room + 1)
             room.draw()
-            room.win.addstr(room.y - 1, room.x - 7, '(m)ENU')
             room.win.touchwin()
             player = room.player
 

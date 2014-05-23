@@ -1,6 +1,6 @@
-    ###     ; You're @. Push the $ into the .
-#####.#     ; You can pickup and place %
-#   @ #     ; & are enemeies. Kill by placing % on them
+    ###
+#####.#
+#   @ #
 #%#%#%#
 #&#$# #
 # % & #

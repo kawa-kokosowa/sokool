@@ -1,0 +1,7 @@
+You awake to find yourself in a warehouse. Telltale signs of thieves pique your senses.
+
+@ -- You; the player.
+$ -- Pushable block. Push it to the goal (.).
+. -- Goal; put pushable blocks here ($).
+& -- Enemy; crush with placeable blocks.
+% -- Placeable block. Set with WADS.
