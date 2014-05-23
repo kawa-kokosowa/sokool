@@ -1,4 +1,14 @@
+"""Sokool: Sokoban Kool Edition
+Lillian Lynn Mahoney
+
+RPG elements!
+
+Experience is a formula involving the # of moves to complete a level...
+
+"""
+
 import curses
+import glob
 import math
 import sys
 
@@ -16,7 +26,7 @@ PLAYER_CHARACTER = '@'
 
 
 def distance(plot_a, plot_b):
-    """The Distance formula."""
+    """Cartesian coordinates distance."""
 
     a_x, a_y = plot_a
     b_x, b_y = plot_b
@@ -27,6 +37,8 @@ def distance(plot_a, plot_b):
 
 
 def heuristic_cost_estimate(start, goal):
+    """Traversing cost estimator for the A* algorithm."""
+
     diff_x = math.fabs(start[0] - goal[0])
     diff_y = math.fabs(start[1] - goal[1])
 
@@ -45,7 +57,18 @@ def reconstruct_path(came_from, current_node):
         return (current_node,)
 
 
-def astar(start, goal, strict=False):
+def astar(start, goal):
+    """Updated from some abandonded project of mine (SSHRPG).
+
+    Args:
+      start (tuple): (x, y) coord to start navigating from.
+      goal (tuple): (x, y) coord to find a path to.
+
+    Returns:
+      list: list of coordinates to traverse to get to goal.
+
+    """
+
     coordinates = room.coordinates
     closedset = set()  # set of nodes already evaluated
     openset = set([start])  # set of tentative nodes to be evaluated
@@ -63,6 +86,7 @@ def astar(start, goal, strict=False):
             score = f_score.get(plot, None)
 
             if score is None:
+
                 continue
 
             openset_f_scores[plot] = score
@@ -83,14 +107,15 @@ def astar(start, goal, strict=False):
         down = (current_x, current_y + 1)
         right = (current_x + 1, current_y)
         adjacent = (up, left, down, right)
+        adjacent = [plot for plot in adjacent if plot in room.coordinates]
 
         for neighbor in adjacent:
             tentative_g_score = g_score[current] + distance(current, neighbor)
 
             # needs to reference tile_type's impassable value
-            tile_type = room[neighbor]
+            entity = room[neighbor]
 
-            if tile_type in ('#', '%', '$'):
+            if entity.name in ('wall', 'place block', 'push block'):
                 closedset.add(neighbor)
 
                 continue
@@ -111,13 +136,55 @@ def astar(start, goal, strict=False):
                 if neighbor not in openset:
                     openset.add(neighbor)
 
-    if strict:
+    return None
 
-        raise Exception('AStar: Impossible!')
 
-    else:
+class Menu(object):
 
-        return None
+    def __init__(self):
+        self.rows = rows
+        self.items = {}
+
+    def item(self, item_title, callback=None):
+        self.items[item_title] = callback
+
+    def init(self):
+        height = len(self.items)
+        width = len(max(self.items.keys()))
+        window =  curses.newwin(height, width)
+        window.box()
+
+        callback_index = {}
+
+        for i, row in enumerate(self.items.keys()):
+            y = i + 1
+            window.addstr(y, 2, row)
+
+            callback = self.items[row]
+
+            if callback:
+                callback_index[y] = self.items[row]
+
+        close_pos_y = y + 2
+        window.addstr(close_pos_y, 2, 'CLOSE')
+        stats.touchwin()
+        stats.refresh()
+
+        # build the index of options
+        cursor_positions = callback_index.keys()
+        cursor_index = cursor_positions[0]
+        window.putch(cursor_index, 0, '>')
+
+        # time to navigate the menu with up and down
+        while True:
+            key = screen.getch()
+            window.putch(cursor_index, 0, ' ')
+
+            if key == curses.KEY_UP:
+                cursor_index -= 1
+
+            elif key == curses.KEY_DOWN:
+                cursor_index += 1
 
 
 # Game Objects ################################################################
@@ -126,11 +193,15 @@ def astar(start, goal, strict=False):
 class Player(object):
 
     def __init__(self):
-        self.y = room.player_start_y
-        self.x = room.player_start_x
-        self.char = PLAYER_CHARACTER
+        self.y = None
+        self.x = None
+
+        self.name = 'player'
+        self.character = PLAYER_CHARACTER
         self.moves = 0
         self.in_menu = False
+        self.solid = True
+        self.underfoot = None
 
         # stats
         self.hp = 3
@@ -140,6 +211,10 @@ class Player(object):
         self.max_blocks = 2
 
         self.xp = 0
+
+    def __str__(self):
+
+        return self.char
 
     def set_block(self, direction):
 
@@ -167,8 +242,10 @@ class Player(object):
 
         coord = (x, y)
 
-        if self.blocks and not room[coord] in ['%', '#', '$']:
-            room[coord] = '%'
+        if self.blocks and not room[coord].name in ['place block', 'wall',
+                                                    'push block']:
+
+            room[coord] = PlaceBlock()
             self.blocks -= 1
             self.add_moves(1)
 
@@ -276,11 +353,15 @@ class Player(object):
             return False
 
         # entity/interaction checks
-        if room[(x, y)] in ('#', '&'):
+        conflict_entity = room[x, y]
+
+        # if there is an entity conflict for this coordinate, we
+        # should deal with the conflict based on opposing name
+        if conflict_entity.name in ('wall', 'enemy'):
 
             return False
 
-        if room[(x, y)] == '%':
+        elif conflict_entity.name == 'place block':
 
             if not self.blocks == self.max_blocks:
                 self.blocks += 1
@@ -290,7 +371,7 @@ class Player(object):
                 return False
 
         # pushing block?
-        elif room[(x, y)] == '$':
+        elif conflict_entity.name == 'push block':
             # we gotta check for block's boundaries when pushing
             check_x = x
             check_y = y
@@ -305,17 +386,20 @@ class Player(object):
             elif moving_direction == 'down':
                 check_y += 1
 
-            if room[(check_x, check_y)] in ['#', '%', '&', '$']:
+            if room[(check_x, check_y)].solid:
 
+                # you can't push a block into a solid object!
                 return False
 
             else:
-                room[(check_x, check_y)] = '$'
+                room.move((x, y), (check_x, check_y))
 
-        room[(self.x, self.y)] = ord(' ')
+        old_coord = (self.x, self.y)
         self.x = x
         self.y = y
-        room[(self.x, self.y)] = self.char
+        new_coord = (x, y)
+
+        room.move(old_coord, new_coord)
         self.add_moves(1)
 
         return True
@@ -323,11 +407,18 @@ class Player(object):
 
 class Enemy(object):
 
-    def __init__(self, x, y):
+    def __init__(self):
         self.name = 'enemy'
-        self.y = y
-        self.x = x
+        self.y = None
+        self.x = None
         self.player_last_move_count = 0
+        self.character = '&'
+        self.solid = True
+        self.underfoot = None
+
+    def __str__(self):
+
+        return self.char
 
     def update(self):
         """Handle rendering enemy's interaction with the world.
@@ -338,7 +429,7 @@ class Enemy(object):
 
         if room[current_plot] == '%':
             player.xp += 1
-            del room.entities[current_plot]
+            del room[current_plot]
 
             return None
 
@@ -346,7 +437,7 @@ class Enemy(object):
         astar_path = astar(current_plot, (player.x, player.y))
 
         if astar_path is None:
-            room[current_plot] = '*'
+            self.character = '*'
 
             return None
 
@@ -378,31 +469,34 @@ class Enemy(object):
         elif direction == 'down':
             y += 1
 
-        if room[(x, y)] in ('#', '&'):
+        entity = room[x, y]
+
+        if entity.name in ('wall', 'enemy', 'place block'):
 
             return None
 
-        if not room[current_plot] == '%':
-            room[current_plot] = ord(' ')
-
-        if room[(x, y)] == '@':
+        elif entity.name == 'player':
             player.hp -= 1
-            del room.entities[current_plot]
-            room[current_plot] = ' '
+            del room[current_plot]
 
             return None
 
-        del room.entities[current_plot]
-        self.x = x
-        self.y = y
-        new_plot = (self.x, self.y)
-        room[new_plot] = '&'
-        room.entities[new_plot] = self
+        new_plot = (x, y)
+        room.move(current_plot, new_plot)
 
 
-class CarryBlock(object):
+class PlaceBlock(object):
 
-    pass
+    def __init__(self):
+        """You can actually pick these up and place elsewhere."""
+
+        self.character = '%'
+        self.name = 'place block'
+        self.solid = True
+        self.underfoot = None
+
+        self.x = None
+        self.y = None
 
 
 class PushBlock(object):
@@ -410,12 +504,56 @@ class PushBlock(object):
     def __init__(self):
         """The typical sokoban push block."""
 
-        pass
+        self.character = '$'
+        self.name = 'push block'
+        self.solid = True
+        self.underfoot = None
+
+        self.x = None
+        self.y = None
+
+
+class Goal(object):
+
+    def __init__(self):
+        """Where push blocks belong!"""
+
+        self.character = '.'
+        self.name = 'goal'
+        self.solid = False
+        self.underfoot = None
+
+        self.x = None
+        self.y = None
+
+
+class Wall(object):
+
+    def __init__(self):
+        self.character = '#'
+        self.name = 'wall'
+        self.solid = True
+        self.underfoot = None
+
+        self.x = None
+        self.y = None
+
+
+class EmptySpace(object):
+
+    def __init__(self):
+        self.character = ' '
+        self.name = 'empty'
+        self.solid = False
+        self.underfoot = None
+
+        self.x = None
+        self.y = None
 
 
 class Room(object):
 
-    def __init__(self):
+    def __init__(self, room=1):
         """Need better way of storing objects at positions in the map?
 
         All objects can have __str__...
@@ -426,47 +564,156 @@ class Room(object):
         """
 
         # generate model from file
-        with open('rooms/test.txt') as f:
+        self.room = room
+        self.filename = glob.glob('rooms/%s - *.txt' % self.room)[0]
+
+        with open(self.filename) as f:
             file_contents = f.read()
 
-        self.model = [list(row) for row in file_contents.split('\n')][:-1]
-        self.player_position = None  # done in self.draw()
+        # static_map is for containing characters within cells [y][x]
+        self.static_map = [list(row) for row in file_contents.split('\n')][:-1]
 
-        self.y = len(self.model) + 1
-        self.x = len(max(self.model))
-        room = curses.newwin(self.y, self.x, 0, 0)
-        self.win = room
+        # extrapolate room meta
+        self.y = len(self.static_map) + 1
+        self.x = max([len(s) for s in self.static_map])
         self.coordinates = []
+        self.goals = []  # so we may quickly check goal status later...
 
-        # store objects, e.g., enemies, blocks at positions
-        self.entities = {}
+        # for window/curses control
+        self.win = curses.newwin(self.y, self.x, 0, 0)
+
+        # good place for items that move about, rendered last (highest z index)
+        self.overlay_cells = {}
+
+    def next(self):
+        self.__init__(room=self.room)
+        self.draw()
+        self.win.addstr(room.y - 1, room.x - 7, '(m)ENU')
+        room.win.touchwin()
+        player = room.player
+
+    def goals_complete(self):
+        goals_complete = 0
+
+        for goal in self.goals:
+
+            if self[goal].name == 'push block':
+                goals_complete += 1
+
+        if goals_complete == len(self.goals):
+
+            return True
+
+        else:
+
+            return False
+
+    def __iter__(self):
+        """Iterate through the entity objects which are on the overlay
+        map.
+
+        """
+
+        return iter(self.overlay_cells.values())
 
     def __setitem__(self, key, value):
+        """Directly affect the map's overlay cells.
+
+        """
+
         x, y = key
-        self.win.addch(y, x, value)
-        self.model[y][x] = value
+
+        entity = value
+        entity.x = x
+        entity.y = y
+
+        self.overlay_cells[(x, y)] = entity
+
+        self.win.addch(y, x, entity.character)
         self.win.refresh()
 
     def __getitem__(self, key):
-        x, y = key
 
-        return self.model[y][x]
+        return self.overlay_cells[key]
+
+    def __delitem__(self, key):
+
+        empty_space = EmptySpace()
+        self.overlay_cells[key] = empty_space
+
+        x, y = key
+        self.win.addch(y, x, empty_space.character)
+        self.win.refresh()
+
+    def move(self, move_from, move_to):
+        """Move an overlay cell by coordinate/key."""
+
+        source = self[move_from]
+        target = self[move_to]
+
+        if source.underfoot:
+            self[move_from] = source.underfoot
+            source.underfoot = None
+
+        else:
+            del self[move_from]
+
+        if not target.solid:
+            source.underfoot = target
+
+        self[move_to] = source
 
     def draw(self):
+        """Should be called compile... maybe a part of init?"""
 
-        for y, row in enumerate(self.model):
+        # collect data from "static map" and transform into entities
+        for y, row in enumerate(self.static_map):
 
             for x, col in enumerate(row):
 
                 if col == '@':
-                    self.player_start_x = x
-                    self.player_start_y = y
+                    self.player = Player()
+                    self[(x, y)] = self.player
 
                 elif col == '&':
-                    self.entities[(x, y)] = Enemy(x, y)
+                    self[(x, y)] = Enemy()
 
-                self[(x, y)] = col
+                elif col == '#':
+                    self[(x, y)] = Wall()
+
+                elif col == '%':
+                    self[(x, y)] = PlaceBlock()
+
+                elif col == '$':
+                    self[(x, y)] = PushBlock()
+
+                elif col == ' ':
+                    self[(x, y)] = EmptySpace()
+
+                elif col == '.':
+                    self[(x, y)] = Goal()
+                    self.goals.append((x, y))
+
+                elif col == ';':
+                    comment = ''.join(row[x:])
+
+                    try:
+                        self.win.addstr(y, x, comment)
+                    except:
+                        raise Exception(([x, y], [self.x, self.y], len(comment)))
+
+                    break
+
                 self.coordinates.append((x, y))
+
+        # now draw the overlay/entitites
+        for coordinate, entity in self.overlay_cells.items():
+            x, y = coordinate
+
+            try:
+                self.win.addch(y, x, entity.character)
+            except:
+                raise Exception(entity.character)
 
 
 # runtime/start UI
@@ -487,15 +734,25 @@ room = Room()
 room.draw()
 room.win.addstr(room.y - 1, room.x - 7, '(m)ENU')
 room.win.touchwin()
-
-player = Player()
+player = room.player
 
 while 1:
 
     #screen.clear()
-    if player.update() and room.entities:
+    if player.update():
 
-        for entity in room.entities.values():
+        # check if all goals complete
+        if room.goals_complete():
+            room = Room(room.room + 1)
+            room.draw()
+            room.win.addstr(room.y - 1, room.x - 7, '(m)ENU')
+            room.win.touchwin()
+            player = room.player
+
+            continue
+
+        # all entities move after player!
+        for entity in room:
 
             if entity.name == 'enemy':
                 entity.update()

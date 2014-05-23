@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 
+# I don't use any hiddne files
+.*
+
+# VIM
+*.swp
+
 # C extensions
 *.so
 
