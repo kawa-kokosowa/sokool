@@ -33,6 +33,7 @@ PLAYER_CHARACTER = '@'
 
 STATUS_PANEL_WIDTH = 35
 
+
 # A* ALGORITHM/PATH GENERATION ################################################
 
 
@@ -168,6 +169,7 @@ def make_panel(width, height, position, title=None):
 
 def menu(rows):
     """Mostly a placeholder. Should use make_panel..."""
+
     stats =  curses.newwin(6, 18)
     stats.box()
     callbacks = rows.values()
@@ -197,7 +199,6 @@ class Player(object):
 
         self.name = 'player'
         self.character = PLAYER_CHARACTER
-        self.in_menu = False
         self.solid = True
         self.underfoot = None
         self.color_pair = 1
@@ -268,29 +269,6 @@ class Player(object):
         y = self.y
 
         # get out of existing menu if possible... else lock input.
-        if self.in_menu:
-
-            if key == ord('c'):
-                room.win.touchwin()
-                room.win.refresh()
-                self.in_menu = False
-
-                return False
-
-            elif key == ord('q'):
-                # end
-                curses.nocbreak()
-                screen.keypad(0)
-                curses.echo()
-                curses.endwin()
-                sys.exit()
-
-                return False
-
-            else:
-
-                return False
-
         if self.hp == 0:
 
             raise Exception('death!')
@@ -330,23 +308,6 @@ class Player(object):
         elif key == ord('s'):
 
             return self.set_block('down')
-
-        elif self.in_menu is False and key == curses.KEY_PPAGE:
-            menu = Menu(['derp', 'bad', 'fad', 'ogay'])
-            self.in_menu = True
-
-            return False
-
-            stats =  curses.newwin(6, 18)
-            stats.box()
-            stats.addstr(1, 2, 'HP: %s/%s' % (self.hp, self.max_hp))
-            stats.addstr(2, 2, 'BLOCKS: %s/%s' % (self.blocks, self.max_blocks))
-            stats.addstr(4, 2, 'XP: ' + str(self.xp))
-            stats.touchwin()
-            stats.refresh()
-            self.in_menu = True
-
-            return False
 
         else:
 
@@ -778,7 +739,7 @@ class Room(object):
 
         # background lines
         # could draw this randomly for scatter pattern
-        background_cells = set()
+        # background_cells = set()
 
         for y, line in enumerate(self.background_lines):
             line = line.strip().replace('\n', '')
