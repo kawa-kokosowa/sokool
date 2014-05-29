@@ -191,17 +191,52 @@ def menu(rows):
 # Game Objects ################################################################
 
 
-class Player(object):
+class RoomEntity(object):
+
+    def __init__(self, name=None, x=None, y=None, solid=False, character=None,
+                 color_pair=1, underfoot=None):
+        """Any interactive object in the room.
+
+        Args:
+          x (int): the nth column from the left
+          y (int): the nth row from the top
+          name (str): the string which identifies this room entity.
+          character (str): single character/symbol to represent the
+            entity on the map.
+          solid (bool): True if entity is capable of being put
+            "under foot."
+          color_pair (int): barbaric curses color pair #. Will replace
+            with something much friendlier soon.
+          underfoot (RoomEntity): a non-solid object to be underfoot
+            of this RoomEntity.
+
+        """
+
+        self.x = x
+        self.y = y
+        self.name = name
+        self.character = character
+        self.solid = solid
+        self.color_pair = color_pair
+        self.underfoot = underfoot
+
+    def __str__(self):
+
+        return self.char
+
+
+class Player(RoomEntity):
 
     def __init__(self):
-        self.y = None
-        self.x = None
+        """The character the user controls."""
 
-        self.name = 'player'
-        self.character = PLAYER_CHARACTER
-        self.solid = True
-        self.underfoot = None
-        self.color_pair = 1
+        RoomEntity.__init__(
+                            self,
+                            name='player',
+                            character=PLAYER_CHARACTER,
+                            color_pair=1,
+                            solid=True
+                           )
 
         # stats
         self.hp = 3
@@ -212,10 +247,6 @@ class Player(object):
 
         self.steps = 0
         self.xp = 0
-
-    def __str__(self):
-
-        return self.char
 
     def set_block(self, direction):
 
@@ -366,21 +397,20 @@ class Player(object):
         return True
 
 
-class Enemy(object):
+class Enemy(RoomEntity):
 
     def __init__(self):
-        self.name = 'enemy'
-        self.y = None
-        self.x = None
+        RoomEntity.__init__(
+                            self,
+                            name='enemy',
+                            character='&',
+                            color_pair=2,
+                            solid=True
+                           )
+
+        # i'll figure out a better way to do this, it's for assuring
+        # the enemy only moves once the player has
         self.player_last_move_count = 0
-        self.character = '&'
-        self.solid = True
-        self.underfoot = None
-        self.color_pair = 2
-
-    def __str__(self):
-
-        return self.char
 
     def update(self):
         """Handle rendering enemy's interaction with the world.
@@ -389,15 +419,17 @@ class Enemy(object):
 
         current_plot = (self.x, self.y)
 
-        if room[current_plot] == '%':
+        if room[current_plot].name == 'place block':
             player.xp += 1
             del room[current_plot]
 
             return None
 
-        # determine direction to move via a*
+        # for moving toward the player using a*
         astar_path = astar(current_plot, (player.x, player.y))
 
+        # enemy doesn't move if there is no path to player,
+        # also enemy's sprite changes
         if astar_path is None:
             self.character = '*'
 
@@ -431,13 +463,13 @@ class Enemy(object):
         elif direction == 'down':
             y += 1
 
-        entity = room[x, y]
+        conflict = room[x, y]
 
-        if entity.name in ('wall', 'enemy', 'place block'):
+        if conflict.name in ('wall', 'enemy', 'place block'):
 
             return None
 
-        elif entity.name == 'player':
+        elif conflict.name == 'player':
             player.hp -= 1
             del room[current_plot]
 
@@ -447,75 +479,68 @@ class Enemy(object):
         room.move(current_plot, new_plot)
 
 
-class PlaceBlock(object):
+class PlaceBlock(RoomEntity):
 
     def __init__(self):
         """You can actually pick these up and place elsewhere."""
 
-        self.character = '%'
-        self.name = 'place block'
-        self.solid = True
-        self.underfoot = None
-        self.color_pair = 3
+        RoomEntity.__init__(
+                            self,
+                            name='place block',
+                            character='%',
+                            color_pair=3,
+                            solid=True
+                           )
 
-        self.x = None
-        self.y = None
 
-
-class PushBlock(object):
+class PushBlock(RoomEntity):
 
     def __init__(self):
         """The typical sokoban push block."""
 
-        self.character = '$'
-        self.name = 'push block'
-        self.solid = True
-        self.underfoot = None
-        self.color_pair = 4
+        RoomEntity.__init__(
+                            self,
+                            name='push block',
+                            character='$',
+                            color_pair=4,
+                            solid=True
+                           )
 
-        self.x = None
-        self.y = None
 
-
-class Goal(object):
+class Goal(RoomEntity):
 
     def __init__(self):
         """Where push blocks belong!"""
 
-        self.character = '.'
-        self.name = 'goal'
-        self.solid = False
-        self.underfoot = None
-        self.color_pair = 5
-
-        self.x = None
-        self.y = None
+        RoomEntity.__init__(
+                            self,
+                            name='goal',
+                            character='.',
+                            color_pair=5,
+                           )
 
 
-class Wall(object):
+class Wall(RoomEntity):
 
     def __init__(self):
-        self.character = '#'
-        self.name = 'wall'
-        self.solid = True
-        self.underfoot = None
-        self.color_pair = 6
+        RoomEntity.__init__(
+                            self,
+                            name='wall',
+                            character='#',
+                            color_pair=6,
+                            solid=True
+                           )
 
-        self.x = None
-        self.y = None
 
-
-class EmptySpace(object):
+class EmptySpace(RoomEntity):
 
     def __init__(self):
-        self.character = ' '
-        self.name = 'empty'
-        self.solid = False
-        self.underfoot = None
-        self.color_pair = 7
-
-        self.x = None
-        self.y = None
+        RoomEntity.__init__(
+                            self,
+                            name='empty',
+                            character=' ',
+                            color_pair=7,
+                           )
 
 
 class StatusPanel(object):
