@@ -1,5 +1,5 @@
-Sokool (DISCONTINUED)
-=====================
+Sokool (DISCONTINUED/NOT MAINTAINED)
+====================================
 
 ```
   ______             __                            __ 
